@@ -1,6 +1,6 @@
 from pathlib import Path
 from python import Python
-from collections.vector import DynamicVector
+from collections import List
 from collections.dict import Dict
 import sys
 
@@ -31,7 +31,7 @@ struct Lox:
     def RunPrompt(inout self):
         var line : String
         while True:
-            print_no_newline("> ")
+            print("> ", end = "")
             line = str(Python.evaluate("input()"))
             if line == "q":
                 break
@@ -45,7 +45,7 @@ struct Lox:
         var scanner = Scanner(source_code)
         var tokens = scanner.scan_tokens()
         var parser = Parser(tokens)
-        var parse_result = DynamicVector[Stmt]()
+        var parse_result = List[Stmt]()
         try:
             parse_result = parser.parse()
         except Error:

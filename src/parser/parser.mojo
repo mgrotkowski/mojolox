@@ -1,4 +1,4 @@
-from collections import DynamicVector, Dict
+from collections import List, Dict
 from utils.variant import Variant
 
 from src.parser.expr import *
@@ -11,16 +11,16 @@ alias Stmt = Variant[StmtPrint, StmtExpression, StmtVar, StmtBlock]
 
 @value
 struct Parser:
-    var tokens : DynamicVector[Token]
+    var tokens : List[Token]
     var current : Int
 
-    fn __init__(inout self, tok_vec : DynamicVector[Token]):
+    fn __init__(inout self, tok_vec : List[Token]):
         self.tokens = tok_vec
         self.current = 0
 
 
-    fn parse(inout self) raises -> DynamicVector[Stmt]:
-        var statements = DynamicVector[Stmt]()
+    fn parse(inout self) raises -> List[Stmt]:
+        var statements = List[Stmt]()
         while not self._is_at_end():
             var result = self.declaration()
             if result:
@@ -63,8 +63,8 @@ struct Parser:
             return StmtBlock(self.block_statement())
         return self.expression_statement()
 
-    fn block_statement(inout self) raises -> DynamicVector[Stmt]:
-        var ret_vec = DynamicVector[Stmt]()
+    fn block_statement(inout self) raises -> List[Stmt]:
+        var ret_vec = List[Stmt]()
 
         while not self._match(TokenType.RIGHT_BRACE) and not self._is_at_end():
             ret_vec.append(self.declaration().value())

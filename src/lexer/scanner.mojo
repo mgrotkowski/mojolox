@@ -1,4 +1,4 @@
-from collections.vector import DynamicVector
+from collections import List
 from collections.dict import Dict
 from collections.optional import Optional
 
@@ -11,7 +11,7 @@ from src.utils import StringKey, str2float
 struct Scanner:
    var source_code : String
    var file_size   : Int
-   var token_vec   : DynamicVector[Token]
+   var token_vec   : List[Token]
 
    var _start       : Int
    var _current     : Int
@@ -22,7 +22,7 @@ struct Scanner:
    fn __init__(inout self, owned src : String):
        self.source_code = src^
        self.file_size = len(self.source_code)
-       self.token_vec = DynamicVector[Token]()
+       self.token_vec = List[Token]()
        self._start = 0
        self._current = 0
        self._line = 1
@@ -64,7 +64,7 @@ struct Scanner:
        self._keywords_dict["while"] = TokenType.WHILE 
 
 
-   fn scan_tokens(inout self) raises -> DynamicVector[Token]:
+   fn scan_tokens(inout self) raises -> List[Token]:
         while self._current < self.file_size:
             self._start = self._current 
             self.scan_token()
@@ -112,7 +112,7 @@ struct Scanner:
         var lex = literal
         if not literal:
             lex = self.source_code[self._start : self._current]
-        self.token_vec.append(Token(type, lexeme.or_else(lex).value(), self._line, literal)) 
+        self.token_vec.append(Token(type, lexeme.or_else(lex), self._line, literal)) 
 
    fn _peek(inout self) -> String:
        if self._is_at_end():
@@ -167,7 +167,7 @@ struct Scanner:
         while self._is_alpha(self._peek()):
             self._current += 1
         var s : String = self.source_code[self._start : self._current]
-        var result_type = self._keywords_dict.find(s).or_else(TokenType.IDENTIFIER).take()
+        var result_type = self._keywords_dict.find(s).or_else(TokenType.IDENTIFIER)
         
 
         if result_type == TokenType.TRUE:

@@ -1,5 +1,6 @@
 from src.lexer.token import Token, LoxType, stringify_lox
 from collections.optional import Optional
+from collections import List
 from memory.anypointer import AnyPointer
 from utils.variant import Variant
 
@@ -173,9 +174,9 @@ struct StmtBlock(Stmt):
    alias var_t = ExprBinary.var_t
    alias Stmt = Variant[StmtPrint, StmtExpression, StmtVar, StmtBlock]
 
-   var statements : DynamicVector[Self.Stmt]
+   var statements : List[Self.Stmt]
 
-   fn __init__(inout self, owned statements : DynamicVector[Self.Stmt]):
+   fn __init__(inout self, owned statements : List[Self.Stmt]):
       self.statements = statements^
 
    fn __copyinit__(inout self, other : Self):

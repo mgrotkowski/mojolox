@@ -3,19 +3,17 @@ from memory.anypointer import AnyPointer
 from utils.variant import Variant
 
 
-struct B(Movable):
-    var my_var : Variant[AnyPointer[A], AnyPointer[B]]
-
-    fn __moveinit__(inout self, owned other : Self):
-        self.my_var = other.my_var
-        pass
-
-struct A(Movable):
-    var my_var : Variant[AnyPointer[A], AnyPointer[B]]
-
-    fn __moveinit__(inout self, owned other : Self):
-        self.my_var = other.my_var
-        pass
+#struct B(Movable):
+#    var my_var : Variant[AnyPointer[A], AnyPointer[B]]
+#
+#    fn __moveinit__(inout self, owned other : Self):
+#        self.my_var = other.my_var
+#
+#struct A(Movable):
+#    var my_var : Variant[AnyPointer[A], AnyPointer[B]]
+#
+#    fn __moveinit__(inout self, owned other : Self):
+#        self.my_var = other.my_var
 
 def main():
     var dict_1 = Dict[String, String]()

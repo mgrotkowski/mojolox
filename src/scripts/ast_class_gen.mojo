@@ -1,4 +1,5 @@
 from collections.optional import Optional
+from collections import List
 
 alias TAB = "   "
 alias LINE_BREAK = print()
@@ -6,26 +7,26 @@ alias LINE_BREAK = print()
 # CONSTANT: Expr trait and Visitor struct 
 # VARIABLE: Expr structs and Visitor visit methods
 
-def variant_gen(type_name : String, derived_classes : DynamicVector[String]):
+def variant_gen(type_name : String, derived_classes : List[String]):
     print(TAB + TAB + "if " + type_name + ".isa[" + derived_classes[0] + "]():")
-    print_no_newline(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[0] + "Delegate")
+    print(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[0] + "Delegate", end = "")
     print("(" + type_name + ".get[" + derived_classes[0] + "]()[])")
 
     for idx in range(1, len(derived_classes) - 1):
         print(TAB + TAB + "elif " + type_name + ".isa[" + derived_classes[idx] + "]():")
-        print_no_newline(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[idx] + "Delegate")
+        print(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[idx] + "Delegate", end = "")
         print("(" + type_name + ".get[" + derived_classes[idx] + "]()[])")
 
     print(TAB + TAB + "else: ")
-    print_no_newline(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[len(derived_classes) - 1] + "Delegate")
+    print(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[len(derived_classes) - 1] + "Delegate", end = "")
     print("(" + type_name + ".get[" + derived_classes[len(derived_classes) - 1] + "]()[])")
     print()
 
 
 
-def define_expr(base_name : String, types : DynamicVector[String], exprs : Optional[DynamicVector[String]] = None, stmt : Bool = False):
+def define_expr(base_name : String, types : List[String], exprs : Optional[List[String]] = None, stmt : Bool = False):
     print("trait " + base_name + "(CollectionElement):")
-    print_no_newline(TAB)
+    print(TAB, end = "")
     if not stmt:
         print("fn accept[V : Visitor, U : Copyable](inout self, inout visitor : V) raises -> U: ...")
     else:
@@ -33,7 +34,7 @@ def define_expr(base_name : String, types : DynamicVector[String], exprs : Optio
 
     var ptr_t : String = "Variant["
     var var_t : String = "Variant["
-    var class_names = DynamicVector[String]()
+    var class_names = List[String]()
 
     for i in range(len(types)):
         var name : String = types[i].split(":")[0].strip()
@@ -65,9 +66,9 @@ def define_expr(base_name : String, types : DynamicVector[String], exprs : Optio
     
     for i in range(len(types)):
         print()
-        var names : DynamicVector[String] = types[i].split(":")
+        var names : List[String] = types[i].split(":")
         var class_name = names[0].strip()
-        var fields : DynamicVector[String] = names[1].split(",")
+        var fields : List[String] = names[1].split(",")
 
         print("struct " + base_name + class_name + "(" + base_name + "):")
 
@@ -79,23 +80,23 @@ def define_expr(base_name : String, types : DynamicVector[String], exprs : Optio
             print(TAB + "alias var_t = ExprBinary.var_t")
 
         for j in range(len(fields)):
-            print_no_newline(TAB)
-            var field_names : DynamicVector[String] = fields[j].split(" ")
+            print(TAB, end = "")
+            var field_names : List[String] = fields[j].split(" ")
             print("var " + field_names[2] + " : " + field_names[1])
         print()
-        print_no_newline(TAB + "fn __init__(inout self")
+        print(TAB + "fn __init__(inout self", end = "")
         for field in fields:
-            print_no_newline(", ")
-            var field_names : DynamicVector[String] = field[].split(" ")
+            print(", ", end = "")
+            var field_names : List[String] = field[].split(" ")
             if field_names[1] == "Self.ptr_t":
-                print_no_newline(field_names[2] + " : " + "Self.var_t") 
+                print(field_names[2] + " : " + "Self.var_t"), end = "")
             else:
-                print_no_newline(field_names[2] + " : " + field_names[1]) 
+                print(field_names[2] + " : " + field_names[1]), end = "")
         print("):")
 
 
         for j in range(len(fields)):
-            var field_names : DynamicVector[String] = fields[j].split(" ")
+            var field_names : List[String] = fields[j].split(" ")
             if field_names[1] == "Self.ptr_t":
                 variant_gen(field_names[2], class_names)
             else:
@@ -150,36 +151,36 @@ def define_expr(base_name : String, types : DynamicVector[String], exprs : Optio
 
 
 
-def define_visitor(base_name : String, types : DynamicVector[String], stmt : Bool = False): 
+def define_visitor(base_name : String, types : List[String], stmt : Bool = False): 
     print("trait Visitor:")
     for i in range(len(types)):
         type_name = types[i].split(":")[0].strip()
-        print_no_newline(TAB)
+        print(TAB, end = "")
         if not stmt:
             print("fn visit" + type_name +  base_name + "[V : Copyable]" +  "(inout self, " + type_name + base_name.lower() + " : " + base_name + type_name + ") raises -> V: ...") 
         else:
             print("fn visit" + type_name +  base_name + "(inout self, " + type_name + base_name.lower() + " : " + base_name + type_name + ") raises -> None: ...") 
 
-def print_headers(stmt : Bool = False, expr_vec : Optional[DynamicVector[String]] = None):
+def print_headers(stmt : Bool = False, expr_vec : Optional[List[String]] = None):
     print("from src.lexer.token import Token, LoxType, stringify_lox")
     print("from collections.optional import Optional")
     print("from memory.anypointer import AnyPointer")
     print("from utils.variant import Variant\n")
     if stmt:
-        print_no_newline("from src.parser.expr import ")
+        print("from src.parser.expr import ", end = "")
         for i in range(len(expr_vec.value()) - 1):
-            print_no_newline(expr_vec.value()[i] + ", ")
+            print(expr_vec.value()[i] + ", ", end = "")
         print(expr_vec.value()[len(expr_vec.value()) - 1])
-        print_no_newline("from src.parser.expr import ")
+        print("from src.parser.expr import ", end = "")
         for i in range(len(expr_vec.value()) - 1):
-            print_no_newline(expr_vec.value()[i] + "Delegate, ")
+            print(expr_vec.value()[i] + "Delegate, ", end = "")
         print(expr_vec.value()[len(expr_vec.value()) - 1] + "Delegate")
     LINE_BREAK
 
 
 
 def expr_gen():
-    var vec = DynamicVector[String]()
+    var vec = List[String]()
     vec.append("Binary   : Self.ptr_t left, Token operator, Self.ptr_t right")
     vec.append("Grouping : Self.ptr_t expression")
     vec.append("Literal  : LoxType value")
@@ -192,17 +193,17 @@ def expr_gen():
     LINE_BREAK
     define_expr("Expr", vec)
 
-def expr_variant_init(expr_vec : DynamicVector[String]):
+def expr_variant_init(expr_vec : List[String]):
     pass
 
 def stmt_gen():
-    var stmt_vec = DynamicVector[String]()
-    var expr_vec = DynamicVector[String]()
+    var stmt_vec = List[String]()
+    var expr_vec = List[String]()
 
     stmt_vec.append("Expression  : Self.ptr_t expression")
     stmt_vec.append("Print       : Self.ptr_t expression")
     stmt_vec.append("Var         : Token name, Self.ptr_t initializer")
-    stmt_vec.append("Block       : DynamicVector[Stmt] statements")
+    stmt_vec.append("Block       : List[Stmt] statements")
     stmt_vec.append("If          : Self.ptr_t condition, Stmt ElseStmt")
 
     expr_vec.append("Binary   : Self.ptr_t left, Token operator, Self.ptr_t right")

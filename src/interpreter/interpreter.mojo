@@ -1,8 +1,7 @@
-from collections.dict import Dict
-from collections.optional import Optional
+from collections import Dict
+from collections import Optional
 from memory.anypointer import AnyPointer
 from memory.unsafe import Pointer, Reference
-from python import Python, Dictionary
 
 from src.parser.expr import *
 import src.parser.stmt as stmt
@@ -31,7 +30,7 @@ struct Interpreter(Visitor, stmt.Visitor):
         else:
             print(stringify_lox(expression.get[ExprLiteral]()[].accept[Interpreter, LoxType](self)))
             
-   fn interpret(inout self, inout statements : DynamicVector[Stmt]) raises:
+   fn interpret(inout self, inout statements : List[Stmt]) raises:
         for i in range(len(statements)):
             self.execute(statements[i])
             
@@ -46,7 +45,7 @@ struct Interpreter(Visitor, stmt.Visitor):
         elif statement.isa[stmt.StmtBlock]():
             statement.get[stmt.StmtBlock]()[].accept[Self](self)
 
-   fn execute_block(inout self, owned statements : DynamicVector[Stmt], owned env : Environment) -> None:
+   fn execute_block(inout self, owned statements : List[Stmt], owned env : Environment) -> None:
         var env_previous = self.env
         try:
             self.env = env
@@ -224,14 +223,11 @@ struct Environment(Movable, Copyable):
         if other.enclosing:
             self.enclosing = AnyPointer[Environment]().alloc(1)
             other.enclosing.move_into(self.enclosing)
+
         other.enclosing = AnyPointer[Environment]()
 
    fn __copyinit__(inout self, other : Self):
-        self.variable_map = Dict[String, LoxType]()
-
-        for item in other.variable_map.items():
-            self.variable_map[item[].key] = item[].value
-
+        self.variable_map = other.variable_map
         self.enclosing = AnyPointer[Environment]()
 
         if other.enclosing:
@@ -239,11 +235,9 @@ struct Environment(Movable, Copyable):
             self.enclosing.emplace_value(other.enclosing[])
 
    fn __del__(owned self):
-        var enclosed : Bool = False
         if self.enclosing:
             _ = self.enclosing.take_value()
             self.enclosing.free()
-            enclosed = True
 
    fn define(inout self, name : String, value : LoxType):
         self.variable_map[name] = value
