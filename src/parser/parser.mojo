@@ -2,12 +2,12 @@ from collections import List, Dict
 from utils.variant import Variant
 
 from src.parser.expr import *
-from src.parser.stmt import StmtPrint, StmtExpression, StmtVar, StmtBlock
+from src.parser.stmt import StmtPrint, StmtExpression, StmtVar, StmtBlock, StmtIf, StmtWhile
 from src.lexer.token import Token, TokenType
 from src.lexer.error_report import report
 
 alias Expr = ExprBinary.var_t
-alias Stmt = Variant[StmtPrint, StmtExpression, StmtVar, StmtBlock]
+alias Stmt = StmtExpression.Stmt
 
 @value
 struct Parser:
@@ -61,7 +61,84 @@ struct Parser:
         if self._match(TokenType.LEFT_BRACE):
             self._advance()
             return StmtBlock(self.block_statement())
+        if self._match(TokenType.IF):
+            self._advance()
+            return self.if_statement()
+        if self._match(TokenType.WHILE):
+            self._advance()
+            return self.while_statement()
+        if self._match(TokenType.FOR):
+            self._advance()
+            return self.for_statement()
+
         return self.expression_statement()
+
+    fn while_statement(inout self) raises -> StmtWhile:
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'.")
+        var condition = self.expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect ')' after condition.")
+        var body = self.statement()
+
+        return StmtWhile(condition, body)
+
+    fn for_statement(inout self) raises -> Stmt:
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'for'.")
+        var initializer : Optional[Stmt] = None
+        var condition : Optional[Expr] = None
+        var increment : Optional[Expr] = None
+
+        if self._match(TokenType.SEMICOLON):
+            self._advance()
+        elif self._match(TokenType.VAR):
+            self._advance()
+            initializer = self.var_decl()
+        else:
+            initializer = self.expression_statement()
+
+        if not self._match(TokenType.SEMICOLON):
+            condition = self.expression()
+
+        self._consume(TokenType.SEMICOLON, "Expected ';' after loop condition.")
+        
+        if not self._match(TokenType.RIGHT_PAREN):
+            increment = self.expression()
+
+        self._consume(TokenType.RIGHT_PAREN, "Expected ')' after fo clauses.")
+
+        var body = self.statement()
+
+        if increment:
+            var loop_statements = List[Stmt]()
+            loop_statements.append(body)
+            loop_statements.append(StmtExpression(increment.take()))
+            body = StmtBlock(loop_statements)
+
+        if not condition:
+            condition = Expr(ExprLiteral(String("true")))
+
+        body = StmtWhile(condition.take(), body)
+
+        if initializer:
+            var loop_statements = List[Stmt]()
+            loop_statements.append(initializer.take())
+            loop_statements.append(body)
+            body = StmtBlock(loop_statements)
+
+        return body
+
+
+    fn if_statement(inout self) raises -> StmtIf:
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'if'.")
+        var condition = self.expression()
+        self._consume(TokenType.RIGHT_PAREN, "Expect closing ')' after condition.")
+        var then_stmt = self.statement()
+        var else_stmt : Optional[Stmt] = None
+
+        if self._match(TokenType.ELSE):
+            self._advance()
+            else_stmt = self.statement()
+
+        return StmtIf(condition, then_stmt, else_stmt)
 
     fn block_statement(inout self) raises -> List[Stmt]:
         var ret_vec = List[Stmt]()
@@ -82,12 +159,6 @@ struct Parser:
         self._consume(TokenType.SEMICOLON, "Expected ';' after value.")
         return StmtExpression(expr)
 
-
-    #fn parse(inout self) -> Optional[Expr]:
-    #    try: 
-    #        return self.expression()
-    #    except Error:
-    #        return None
 
     fn expression(inout self) raises -> Expr: 
         return self.comma()
@@ -115,7 +186,7 @@ struct Parser:
         return expr
         
     fn ternary(inout self) raises -> Expr:
-        var expr = self.equality()
+        var expr = self.Or()
 
         if self._match(TokenType.Q_MARK):
             var conditional : Expr
@@ -124,6 +195,22 @@ struct Parser:
             var op2 = self._consume(TokenType.COLON, "Missing ':' in ternary expression")
             expr = ExprBinary(expr, op1, ExprBinary(expr_left, op2, self.ternary()))
         
+        return expr
+
+    fn Or(inout self) raises -> Expr:
+        var expr = self.And()
+        while self._match(TokenType.OR):
+            var operator = self._advance()
+            var expr_right = self.And()
+            expr = ExprLogical(expr, operator, expr_right)
+        return expr
+
+    fn And(inout self) raises -> Expr:
+        var expr = self.equality()
+        while self._match(TokenType.AND):
+            var operator = self._advance()
+            var expr_right = self.equality()
+            expr = ExprLogical(expr, operator, expr_right)
         return expr
 
     fn equality(inout self) raises -> Expr: 

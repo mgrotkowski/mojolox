@@ -1,4 +1,4 @@
-from collections import Dict, KeyElement
+from src.parser.stmt import *
 
 def str2float(x : String) -> Float64:
     var res_split = x.split(".")
@@ -6,20 +6,18 @@ def str2float(x : String) -> Float64:
         return atol(res_split[0]) 
     return atol(res_split[0]) + atol(res_split[1]) / 10**len(res_split[1])
 
-@value
-struct StringKey(KeyElement):
-    var s: String
 
-    fn __init__(inout self, owned s: String):
-        self.s = s^
+fn stmt_delegate_conversion(val : StmtExpression.Stmt_ptr) -> StmtExpression.Stmt:
+   if val.isa[StmtExpressionDelegate]():
+      return val.get[StmtExpressionDelegate]()[].ptr[]
+   elif val.isa[StmtPrintDelegate]():
+      return val.get[StmtPrintDelegate]()[].ptr[]
+   elif val.isa[StmtVarDelegate]():
+      return val.get[StmtVarDelegate]()[].ptr[]
+   elif val.isa[StmtBlockDelegate]():
+      return val.get[StmtBlockDelegate]()[].ptr[]
+   else: 
+      return val.get[StmtIfDelegate]()[].ptr[]
 
-    fn __init__(inout self, s: StringLiteral):
-        self.s = String(s)
-
-    fn __hash__(self) -> Int:
-        return hash(self.s._as_ptr(), len(self.s))
-    
-    fn __eq__(self, other: Self) -> Bool:
-        return self.s == other.s
 
 

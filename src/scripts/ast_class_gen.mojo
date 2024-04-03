@@ -7,21 +7,29 @@ alias LINE_BREAK = print()
 # CONSTANT: Expr trait and Visitor struct 
 # VARIABLE: Expr structs and Visitor visit methods
 
-def variant_gen(type_name : String, derived_classes : List[String]):
-    print(TAB + TAB + "if " + type_name + ".isa[" + derived_classes[0] + "]():")
-    print(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[0] + "Delegate", end = "")
-    print("(" + type_name + ".get[" + derived_classes[0] + "]()[])")
+def variant_gen_fn(derived_classes : List[String], stmt : Bool = False):
+    var fn_begin : String = "expr"
+    var var_t : String = "var_t"
+    var ptr_t : String = "ptr_t"
+    if stmt:
+        fn_begin = "stmt"
+        var_t = "Stmt"
+        ptr_t = "Stmt_ptr"
+
+    print("fn " + fn_begin + "_delegate_init(val : " + derived_classes[0] + "." + var_t + ") -> " + derived_classes[0] + "." + ptr_t + ":")
+    print(TAB + "if " + "val" + ".isa[" + derived_classes[0] + "]():")
+    print(TAB + TAB + "return" + " " + derived_classes[0] + "Delegate",  end = "")
+    print("(" + "val" + ".get[" + derived_classes[0] + "]()[])")
 
     for idx in range(1, len(derived_classes) - 1):
-        print(TAB + TAB + "elif " + type_name + ".isa[" + derived_classes[idx] + "]():")
-        print(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[idx] + "Delegate", end = "")
-        print("(" + type_name + ".get[" + derived_classes[idx] + "]()[])")
+        print(TAB + "elif " + "val" + ".isa[" + derived_classes[idx] + "]():")
+        print(TAB + TAB + "return" + " " + derived_classes[idx] + "Delegate",  end = "")
+        print("(" + "val" + ".get[" + derived_classes[idx] + "]()[])")
 
-    print(TAB + TAB + "else: ")
-    print(TAB + TAB + TAB + "self." + type_name + " = " + derived_classes[len(derived_classes) - 1] + "Delegate", end = "")
-    print("(" + type_name + ".get[" + derived_classes[len(derived_classes) - 1] + "]()[])")
+    print(TAB + "else: ")
+    print(TAB + TAB + "return" + " " + derived_classes[len(derived_classes) - 1] + "Delegate",  end = "")
+    print("(" + "val" + ".get[" + derived_classes[len(derived_classes) - 1] + "]()[])")
     print()
-
 
 
 def define_expr(base_name : String, types : List[String], exprs : Optional[List[String]] = None, stmt : Bool = False):
@@ -78,6 +86,8 @@ def define_expr(base_name : String, types : List[String], exprs : Optional[List[
         else:
             print(TAB + "alias ptr_t = ExprBinary.ptr_t")
             print(TAB + "alias var_t = ExprBinary.var_t")
+            print(TAB + "alias Stmt = " + var_t[:-2] + "]")
+            print(TAB + "alias Stmt_ptr = " + ptr_t[:-2] + "]")
 
         for j in range(len(fields)):
             print(TAB, end = "")
@@ -89,16 +99,27 @@ def define_expr(base_name : String, types : List[String], exprs : Optional[List[
             print(", ", end = "")
             var field_names : List[String] = field[].split(" ")
             if field_names[1] == "Self.ptr_t":
-                print(field_names[2] + " : " + "Self.var_t"), end = "")
+                print(field_names[2] + " : " + "Self.var_t", end = "")
+            elif field_names[1] == "Self.Stmt_ptr":
+                print(field_names[2] + " : " + "Self.Stmt", end = "")
             else:
-                print(field_names[2] + " : " + field_names[1]), end = "")
+                print(field_names[2] + " : " + field_names[1], end = "")
         print("):")
 
 
         for j in range(len(fields)):
             var field_names : List[String] = fields[j].split(" ")
-            if field_names[1] == "Self.ptr_t":
-                variant_gen(field_names[2], class_names)
+            var opt_end = ""
+            if "Optional" in field_names[1]:
+                print(TAB + TAB + "self." + field_names[2] + " = None")
+                print(TAB + TAB + "if " + field_names[2] + ":")
+                print(TAB, end = "")
+                opt_end = ".take()"
+
+            if "Self.ptr_t" in field_names[1]:
+                print(TAB + TAB + "self." + field_names[2] + " = expr_delegate_init(" + field_names[2] + opt_end + ")")
+            elif "Self.Stmt_ptr" in field_names[1]:
+                print(TAB + TAB + "self." + field_names[2] + " = stmt_delegate_init(" + field_names[2] + opt_end + ")")
             else:
                 print(TAB + TAB + "self." + field_names[2] + " = " + field_names[2])
         print() 
@@ -175,6 +196,7 @@ def print_headers(stmt : Bool = False, expr_vec : Optional[List[String]] = None)
         for i in range(len(expr_vec.value()) - 1):
             print(expr_vec.value()[i] + "Delegate, ", end = "")
         print(expr_vec.value()[len(expr_vec.value()) - 1] + "Delegate")
+        print("from src.parser.expr import expr_delegate_init")
     LINE_BREAK
 
 
@@ -187,14 +209,26 @@ def expr_gen():
     vec.append("Unary    : Token operator, Self.ptr_t right")
     vec.append("Variable : Token name")
     vec.append("Assign : Token name, Self.ptr_t value")
+    vec.append("Logical   : Self.ptr_t left, Token operator, Self.ptr_t right")
 
     print_headers()
     define_visitor("Expr", vec)
     LINE_BREAK
     define_expr("Expr", vec)
+    LINE_BREAK
+    variant_gen_fn(get_classes(vec, "Expr"))
+    
 
-def expr_variant_init(expr_vec : List[String]):
-    pass
+
+def get_classes(str_list : List[String], base_name : String) -> List[String]:
+    var ret_list = List[String]()
+
+    for str in str_list:
+        ret_list.append(base_name + str[].split(":")[0].strip())
+
+    return ret_list
+         
+    
 
 def stmt_gen():
     var stmt_vec = List[String]()
@@ -202,9 +236,10 @@ def stmt_gen():
 
     stmt_vec.append("Expression  : Self.ptr_t expression")
     stmt_vec.append("Print       : Self.ptr_t expression")
-    stmt_vec.append("Var         : Token name, Self.ptr_t initializer")
-    stmt_vec.append("Block       : List[Stmt] statements")
-    stmt_vec.append("If          : Self.ptr_t condition, Stmt ElseStmt")
+    stmt_vec.append("Var         : Token name, Optional[Self.ptr_t] initializer")
+    stmt_vec.append("Block       : List[Self.Stmt] statements")
+    stmt_vec.append("If          : Self.ptr_t condition, Self.Stmt_ptr then_stmt, Optional[Self.Stmt_ptr] else_stmt")
+    stmt_vec.append("While       : Self.ptr_t condition, Self.Stmt_ptr body")
 
     expr_vec.append("Binary   : Self.ptr_t left, Token operator, Self.ptr_t right")
     expr_vec.append("Grouping : Self.ptr_t expression")
@@ -212,17 +247,17 @@ def stmt_gen():
     expr_vec.append("Unary    : Token operator, Self.ptr_t right")
     expr_vec.append("Variable      : Token name")
     expr_vec.append("Assign : Token name, Self.ptr_t value")
-    expr_vec.append("Assign : Token name, Self.ptr_t value")
+    expr_vec.append("Logical   : Self.ptr_t left, Token operator, Self.ptr_t right")
 
-    for i in range(len(expr_vec)):
-        expr_vec[i] = "Expr" + expr_vec[i].split(":")[0].strip()
-
+    expr_vec = get_classes(expr_vec, "Expr")    
     print_headers(True, expr_vec)
     define_visitor("Stmt", stmt_vec, stmt = True)
     LINE_BREAK
 
 
     define_expr("Stmt", stmt_vec, expr_vec, stmt = True)
+    LINE_BREAK
+    variant_gen_fn(get_classes(stmt_vec, "Stmt"), True)
     
     
 

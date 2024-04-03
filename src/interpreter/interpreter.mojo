@@ -5,6 +5,7 @@ from memory.unsafe import Pointer, Reference
 
 from src.parser.expr import *
 import src.parser.stmt as stmt
+from src.utils import stmt_delegate_conversion
 from src.lexer.token import Token, TokenType, LoxType, stringify_lox
 from src.parser.parser import Stmt
 from src.lexer.error_report import report
@@ -44,6 +45,11 @@ struct Interpreter(Visitor, stmt.Visitor):
             statement.get[stmt.StmtVar]()[].accept[Self](self)
         elif statement.isa[stmt.StmtBlock]():
             statement.get[stmt.StmtBlock]()[].accept[Self](self)
+        elif statement.isa[stmt.StmtIf]():
+            statement.get[stmt.StmtIf]()[].accept[Self](self)
+        elif statement.isa[stmt.StmtWhile]():
+            statement.get[stmt.StmtWhile]()[].accept[Self](self)
+
 
    fn execute_block(inout self, owned statements : List[Stmt], owned env : Environment) -> None:
         var env_previous = self.env
@@ -73,7 +79,30 @@ struct Interpreter(Visitor, stmt.Visitor):
 
    fn visitBlockStmt(inout self, Blockstmt : stmt.StmtBlock) raises -> None: 
         self.execute_block(Blockstmt.statements, Environment(self.env))
-        
+
+   fn visitIfStmt(inout self, Ifstmt : stmt.StmtIf) raises -> None: 
+        if self._is_truthy(self._evaluate(Ifstmt.condition)):
+            var variant = stmt_delegate_conversion(Ifstmt.then_stmt)
+            self.execute(variant)
+        elif Ifstmt.else_stmt:
+            var variant = stmt_delegate_conversion(Ifstmt.else_stmt.take())
+            self.execute(variant)
+
+   fn visitWhileStmt(inout self, Whilestmt : stmt.StmtWhile) raises -> None: 
+        while self._is_truthy(self._evaluate(Whilestmt.condition)):
+            var body = stmt_delegate_conversion(Whilestmt.body)            
+            self.execute(body)
+   
+   fn visitLogicalExpr[V : Copyable = LoxType](inout self, Logicalexpr : ExprLogical) raises -> V: 
+        var left_val = self._evaluate(Logicalexpr.left)
+        if Logicalexpr.operator.type == TokenType.OR:
+            if self._is_truthy(left_val):
+                return left_val
+        else:
+            if not self._is_truthy(left_val):
+                return left_val
+        return self._evaluate(Logicalexpr.right)
+
    fn visitAssignExpr[V : Copyable = LoxType](inout self, Assignexpr : ExprAssign) raises -> V: 
         var value = self._evaluate(Assignexpr.value)
         self.env.assign(Assignexpr.name, value)
@@ -121,6 +150,7 @@ struct Interpreter(Visitor, stmt.Visitor):
             return self._evaluate(Binaryexpr.right.get[ExprBinaryDelegate]()[].ptr[].right)
 
         return LoxType(None)
+
    fn visitGroupingExpr[V : Copyable = LoxType](inout self, Groupingexpr : ExprGrouping) raises -> V: 
         return self._evaluate(Groupingexpr.expression)
 
@@ -148,6 +178,8 @@ struct Interpreter(Visitor, stmt.Visitor):
             return expr.get[ExprVariableDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
         elif expr.isa[ExprAssignDelegate]():
             return expr.get[ExprAssignDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprLogicalDelegate]():
+            return expr.get[ExprLogicalDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
         else:
             return expr.get[ExprLiteralDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
 
