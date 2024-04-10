@@ -7,6 +7,7 @@ import sys
 from src.lexer.scanner import Scanner, Token
 from src.lexer.error_report import error
 from src.parser.parser import Parser, Stmt
+import src.parser.stmt as stmt
 from src.interpreter.interpreter import Interpreter
 
 @value
@@ -17,6 +18,7 @@ struct Lox:
     fn __init__(inout self):
         self.hadRuntimeError = False
         self.interpreter = Interpreter()
+        print("init")
 
     def RunFile(self, file_name : StringRef):
         with open(Path(file_name), "r") as f:
@@ -49,6 +51,7 @@ struct Lox:
         try:
             parse_result = parser.parse()
         except Error:
+            print(Error)
             return
         try:
             self.interpreter.interpret(parse_result)

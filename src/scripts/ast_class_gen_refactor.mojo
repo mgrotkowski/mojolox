@@ -40,34 +40,14 @@ def define_expr(base_name : String, types : List[String], exprs : Optional[List[
     else:
         print("fn accept[V : Visitor](inout self, inout visitor : V) raises -> None: ...")
 
-    var ptr_t : String = "Variant["
     var var_t : String = "Variant["
     var class_names = List[String]()
 
     for i in range(len(types)):
         var name : String = types[i].split(":")[0].strip()
 
-        ptr_t += base_name + name + "Delegate, "
         var_t += base_name + name + ", "
         class_names.append(base_name + name)
-
-        print("struct " + base_name + name + "Delegate(CollectionElement):")
-        print(TAB + "var ptr : AnyPointer[" + base_name + name + "]")
-        print(TAB + "fn __init__(inout self, expr : "+ base_name +name + "):")
-        print(TAB + TAB +  "self.ptr = AnyPointer[" + base_name + name + "]().alloc(1)")
-        print(TAB + TAB + "self.ptr.emplace_value(expr)")
-
-        print(TAB + "fn __copyinit__(inout self, other : Self):")
-        print(TAB + TAB + "self.ptr = AnyPointer[" + base_name + name + "]().alloc(1)")
-        print(TAB + TAB + "self.ptr.emplace_value(other.ptr[])")
-
-        print(TAB + "fn __moveinit__(inout self, owned other : Self):")
-        print(TAB + TAB + "self.ptr = other.ptr")
-
-        print(TAB + "fn __del__(owned self):")
-        print(TAB + TAB + "_ = self.ptr.take_value()")
-        print(TAB + TAB + "self.ptr.free()")
-        print()
 
     if exprs:
         class_names = exprs.value()
@@ -78,63 +58,96 @@ def define_expr(base_name : String, types : List[String], exprs : Optional[List[
         var class_name = names[0].strip()
         var fields : List[String] = names[1].split(",")
 
-        print("struct " + base_name + class_name + "(" + base_name + "):")
+        print("struct " + base_name + class_name + "(" + base_name + "):", flush = True)
 
         if not stmt:
-            print(TAB + "alias ptr_t = " + ptr_t[:-2] + "]")
-            print(TAB + "alias var_t = " + var_t[:-2] + "]")
+            print(TAB + "alias Expr = " + var_t[:-2] + "]")
         else:
-            print(TAB + "alias ptr_t = ExprBinary.ptr_t")
-            print(TAB + "alias var_t = ExprBinary.var_t")
             print(TAB + "alias Stmt = " + var_t[:-2] + "]")
-            print(TAB + "alias Stmt_ptr = " + ptr_t[:-2] + "]")
 
         for j in range(len(fields)):
             print(TAB, end = "")
             var field_names : List[String] = fields[j].split(" ")
-            print("var " + field_names[2] + " : " + field_names[1])
+            if "Optional" in field_names[1] and "AnyPointer" in field_names[1]:
+                print("var " + field_names[2] + " : " + field_names[1].replace("Optional[", "")[:-1], end = "")
+            else:
+                print("var " + field_names[2] + " : " + field_names[1])
         print()
-        print(TAB + "fn __init__(inout self", end = "")
+        print(TAB + "fn __init__(inout self", end = "", flush = True)
         for field in fields:
             print(", ", end = "")
             var field_names : List[String] = field[].split(" ")
-            if field_names[1] == "Self.ptr_t":
-                print(field_names[2] + " : " + "Self.var_t", end = "")
-            elif field_names[1] == "Self.Stmt_ptr":
+            if field_names[1] == "AnyPointer[Self.Expr]":
+                print(field_names[2] + " : " + "Self.Expr", end = "")
+            elif field_names[1] == "AnyPointer[Expr]":
+                print(field_names[2] + " : " + "Expr", end = "")
+            elif field_names[1] == "AnyPointer[Self.Stmt]":
                 print(field_names[2] + " : " + "Self.Stmt", end = "")
+            elif "Optional" in field_names[1] and "AnyPointer" in field_names[1]:
+                print(field_names[2] + " : " + field_names[1].replace("[AnyPointer", "")[:-1], end = "")
             else:
                 print(field_names[2] + " : " + field_names[1], end = "")
         print("):")
 
 
-        for j in range(len(fields)):
-            var field_names : List[String] = fields[j].split(" ")
+        for field in fields:
+            var field_names : List[String] = field[].split(" ")
             var opt_end = ""
             if "Optional" in field_names[1]:
-                print(TAB + TAB + "self." + field_names[2] + " = None")
+                if "AnyPointer" in field_names[1]:
+                    print(TAB + TAB + "self." + field_names[2] + " = " + field_names[1].replace("Optional[", "")[:-1] + "()")
+                else:
+                    print(TAB + TAB + "self." + field_names[2] + " = None")
                 print(TAB + TAB + "if " + field_names[2] + ":")
-                print(TAB, end = "")
-                opt_end = ".take()"
+                if "AnyPointer" in field_names[1]:
+                    print(TAB + TAB + TAB + "self." + field_names[2] + " = " + "self." + field_names[2] + ".alloc(1)")
+                    print(TAB + TAB + TAB + "self." + field_names[2] + ".emplace_value(" + field_names[2] + ".take())")
+                else:
+                    print(TAB + TAB + TAB + "self." + field_names[2] + " = " + field_names[2] + ".take()")
 
-            if "Self.ptr_t" in field_names[1]:
-                print(TAB + TAB + "self." + field_names[2] + " = expr_delegate_init(" + field_names[2] + opt_end + ")")
-            elif "Self.Stmt_ptr" in field_names[1]:
-                print(TAB + TAB + "self." + field_names[2] + " = stmt_delegate_init(" + field_names[2] + opt_end + ")")
+            elif "AnyPointer" in field_names[1]:
+                print(TAB + TAB + "self." + field_names[2] + " = " + field_names[1] + "().alloc(1)")
+                print(TAB + TAB + "self." + field_names[2] + ".emplace_value(" + field_names[2] + ")")
             else:
                 print(TAB + TAB + "self." + field_names[2] + " = " + field_names[2])
         print() 
 
         print(TAB + "fn __copyinit__(inout self, other : Self):")
         for field in fields:
-            var name_type = field[].split(" ")
-            var name = name_type[2].strip()
-            print(TAB + TAB + " self." + name + " = " + "other." + name)
+            var field_names = field[].split(" ")
+            if  "AnyPointer" in field_names[1]:
+                var type = field_names[1]
+                if "Optional" in field_names[1]:
+                    type = field_names[1].replace("Optional[", "")[:-1]  
+                print(TAB + TAB + "self." + field_names[2] + " = " + type + "()")
+                print(TAB + TAB + "if other." + field_names[2] + ":")
+                print(TAB + TAB + TAB +  "self." + field_names[2] + " = " + type + "().alloc(1)")
+                print(TAB + TAB + TAB + "self." + field_names[2] + ".emplace_value(other." + field_names[2] + "[])")
+            else:
+                print(TAB + TAB + "self." + field_names[2] + " = " + "other." + field_names[2])
 
         print(TAB + "fn __moveinit__(inout self, owned other : Self):")
         for field in fields:
-            var name_type = field[].split(" ")
-            var name = name_type[2].strip()
-            print(TAB + TAB + "self." + name + " = " + "other." + name)
+            var field_names = field[].split(" ")
+            print(TAB + TAB + "self." + field_names[2] + " = " + "other." + field_names[2])
+            if  "AnyPointer" in field_names[1]:
+                if "Optional" in field_names[1]:
+                    print(TAB + TAB + "other." + field_names[2] + " = " + field_names[1].replace("Optional[", "")[:-1] + "()")
+                else:
+                    print(TAB + TAB + "other." + field_names[2] + " = " + field_names[1] + "()")
+
+        print(TAB + "fn __del__(owned  self):")
+        var has_anyptr = False
+        for field in fields:
+            var field_names = field[].split(" ")
+            if  "AnyPointer" in field_names[1]:
+                has_anyptr = True
+                print(TAB + TAB + "if self." + field_names[2] + ":")
+                print(TAB + TAB + TAB + "_ = self." + field_names[2] + ".take_value()")
+                print(TAB + TAB + TAB + "self." + field_names[2] + ".free()")
+        if not has_anyptr:
+            print(TAB + TAB + TAB + "pass")
+
 
         print(TAB + "fn __str__(self) -> String:")
         var hit = False
@@ -159,8 +172,6 @@ def define_expr(base_name : String, types : List[String], exprs : Optional[List[
 
         if not hit:
             print(TAB + TAB + 'return String("' + class_name + '")')
-
-            
                  
         print()
         if not stmt:
@@ -192,32 +203,26 @@ def print_headers(stmt : Bool = False, expr_vec : Optional[List[String]] = None)
         for i in range(len(expr_vec.value()) - 1):
             print(expr_vec.value()[i] + ", ", end = "")
         print(expr_vec.value()[len(expr_vec.value()) - 1])
-        print("from src.parser.expr import ", end = "")
-        for i in range(len(expr_vec.value()) - 1):
-            print(expr_vec.value()[i] + "Delegate, ", end = "")
-        print(expr_vec.value()[len(expr_vec.value()) - 1] + "Delegate")
-        print("from src.parser.expr import expr_delegate_init")
+        print("alias Expr = " + expr_vec.value()[0] + ".Expr")
     LINE_BREAK
 
 
 
 def expr_gen():
     var vec = List[String]()
-    vec.append("Binary   : Self.ptr_t left, Token operator, Self.ptr_t right")
-    vec.append("Grouping : Self.ptr_t expression")
+    vec.append("Binary   : AnyPointer[Self.Expr] left, Token operator, AnyPointer[Self.Expr] right")
+    vec.append("Grouping : AnyPointer[Self.Expr] expression")
     vec.append("Literal  : LoxType value")
-    vec.append("Unary    : Token operator, Self.ptr_t right")
+    vec.append("Unary    : Token operator, AnyPointer[Self.Expr] right")
     vec.append("Variable : Token name")
-    vec.append("Assign   : Token name, Self.ptr_t value")
-    vec.append("Logical  : Self.ptr_t left, Token operator, Self.ptr_t right")
-    vec.append("Call     : Self.ptr_t callee, Token paren, List[Self.var_t] arguments")
+    vec.append("Assign   : Token name, AnyPointer[Self.Expr] value")
+    vec.append("Logical  : AnyPointer[Self.Expr] left, Token operator, AnyPointer[Self.Expr] right")
+    vec.append("Call     : AnyPointer[Self.Expr] callee, Token paren, List[Self.Expr] arguments")
 
     print_headers()
     define_visitor("Expr", vec)
     LINE_BREAK
     define_expr("Expr", vec)
-    LINE_BREAK
-    variant_gen_fn(get_classes(vec, "Expr"))
     
 
 
@@ -235,21 +240,23 @@ def stmt_gen():
     var stmt_vec = List[String]()
     var expr_vec = List[String]()
 
-    stmt_vec.append("Expression  : Self.ptr_t expression")
-    stmt_vec.append("Print       : Self.ptr_t expression")
-    stmt_vec.append("Var         : Token name, Optional[Self.ptr_t] initializer")
+    stmt_vec.append("Expression  : AnyPointer[Expr] expression")
+    stmt_vec.append("Print       : AnyPointer[Expr] expression")
+    stmt_vec.append("Var         : Token name, Optional[AnyPointer[Expr]] initializer")
     stmt_vec.append("Block       : List[Self.Stmt] statements")
-    stmt_vec.append("If          : Self.ptr_t condition, Self.Stmt_ptr then_stmt, Optional[Self.Stmt_ptr] else_stmt")
-    stmt_vec.append("While       : Self.ptr_t condition, Self.Stmt_ptr body")
+    stmt_vec.append("If          : AnyPointer[Expr] condition, AnyPointer[Self.Stmt] then_stmt, Optional[AnyPointer[Self.Stmt]] else_stmt")
+    stmt_vec.append("While       : AnyPointer[Expr] condition, AnyPointer[Self.Stmt] body")
+    stmt_vec.append("Function    : Token name, List[Token] params, List[Self.Stmt] body")
+    stmt_vec.append("Return      : Token keyword, Optional[Expr] value")
 
-    expr_vec.append("Binary   : Self.ptr_t left, Token operator, Self.ptr_t right")
-    expr_vec.append("Grouping : Self.ptr_t expression")
+    expr_vec.append("Binary   : AnyPointer[Self.Expr] left, Token operator, AnyPointer[Expr_t] right")
+    expr_vec.append("Grouping : AnyPointer[Self.Expr] expression")
     expr_vec.append("Literal  : LoxType value")
-    expr_vec.append("Unary    : Token operator, Self.ptr_t right")
+    expr_vec.append("Unary    : Token operator, AnyPointer[Self.Expr] right")
     expr_vec.append("Variable : Token name")
-    expr_vec.append("Assign   : Token name, Self.ptr_t value")
-    expr_vec.append("Logical  : Self.ptr_t left, Token operator, Self.ptr_t right")
-    expr_vec.append("Call     : Self.ptr_t callee, Token paren, List[Self.var_t] arguments")
+    expr_vec.append("Assign   : Token name, AnyPointer[Self.Expr] value")
+    expr_vec.append("Logical  : AnyPointer[Self.Expr] left, Token operator, AnyPointer[Expr_t] right")
+    expr_vec.append("Call     : AnyPointer[Self.Expr] callee, Token paren, List[Self.Expr] arguments")
 
     expr_vec = get_classes(expr_vec, "Expr")    
     print_headers(True, expr_vec)
@@ -258,8 +265,6 @@ def stmt_gen():
 
 
     define_expr("Stmt", stmt_vec, expr_vec, stmt = True)
-    LINE_BREAK
-    variant_gen_fn(get_classes(stmt_vec, "Stmt"), True)
     
     
 

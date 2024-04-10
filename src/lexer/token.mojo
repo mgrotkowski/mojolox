@@ -1,17 +1,17 @@
-from utils.variant import Variant
-alias LoxType = Variant[String, Float64, Bool, NoneType]
+from src.utils import stringify_lox
+from src.lox_types import LoxBaseType
 
 @value
 struct Token(CollectionElement, Stringable):
     var type : TokenType
-    var lexeme : LoxType
+    var lexeme : LoxBaseType
     var line : Int
     var literal : String
 
     fn __init__(
                 inout self, 
                 owned type : TokenType, 
-                owned lexeme : LoxType, 
+                owned lexeme : LoxBaseType, 
                 owned line : Int, 
                 owned literal : String
                 ):
@@ -22,25 +22,6 @@ struct Token(CollectionElement, Stringable):
 
     fn __str__(self) -> String:
         return stringify_lox(self.lexeme)
-
-#        if self.lexeme.isa[String]():
-#            return self.lexeme.get[String]()[]
-#        elif self.lexeme.isa[Float64]():
-#            var lexeme_str : String
-#            lexeme_str = str(self.lexeme.get[Float64]()[])
-#            try:
-#                var split = lexeme_str.split(".")
-#                if len(split[1]) == 1 and split[1] == "0":
-#                    lexeme_str = split[0]
-#            except Error:
-#                pass
-#            return lexeme_str
-#        elif self.lexeme.isa[Bool]():
-#            return str(self.lexeme.get[Bool]()[])
-#        else:
-#            return str(self.lexeme.get[NoneType]()[])
-        
-        #return "TokenID: " + str(self.type.value) + " Lexeme: " + lexeme_str + " Literal: " + self.literal
 
 
 @register_passable("trivial")
@@ -103,22 +84,4 @@ struct TokenType(CollectionElement):
     
     fn __eq__(self : Self, other : Self) -> Bool:
         return self.value == other.value
-
-fn stringify_lox(value : LoxType) -> String:
-    if value.isa[String]():
-        return value.get[String]()[]
-    elif value.isa[Float64]():
-        var lexeme_str : String
-        lexeme_str = str(value.get[Float64]()[])
-        try:
-            var split = lexeme_str.split(".")
-            if len(split[1]) == 1 and split[1] == "0":
-                lexeme_str = split[0]
-        except Error:
-            pass
-        return lexeme_str
-    elif value.isa[Bool]():
-        return str(value.get[Bool]()[])
-    else:
-        return str(value.get[NoneType]()[])
 

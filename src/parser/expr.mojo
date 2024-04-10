@@ -1,4 +1,6 @@
-from src.lexer.token import Token, LoxType, stringify_lox
+from src.lexer.token import Token
+from src.utils import stringify_lox
+from src.lox_types import LoxBaseType
 from collections.optional import Optional
 from memory.anypointer import AnyPointer
 from utils.variant import Variant
@@ -11,127 +13,46 @@ trait Visitor:
    fn visitVariableExpr[V : Copyable](inout self, Variableexpr : ExprVariable) raises -> V: ...
    fn visitAssignExpr[V : Copyable](inout self, Assignexpr : ExprAssign) raises -> V: ...
    fn visitLogicalExpr[V : Copyable](inout self, Logicalexpr : ExprLogical) raises -> V: ...
+   fn visitCallExpr[V : Copyable](inout self, inout Callexpr : ExprCall) raises -> V: ...
 trait Expr(CollectionElement):
    fn accept[V : Visitor, U : Copyable](inout self, inout visitor : V) raises -> U: ...
-struct ExprBinaryDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprBinary]
-   fn __init__(inout self, expr : ExprBinary):
-      self.ptr = AnyPointer[ExprBinary]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprBinary]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
-struct ExprGroupingDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprGrouping]
-   fn __init__(inout self, expr : ExprGrouping):
-      self.ptr = AnyPointer[ExprGrouping]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprGrouping]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
-struct ExprLiteralDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprLiteral]
-   fn __init__(inout self, expr : ExprLiteral):
-      self.ptr = AnyPointer[ExprLiteral]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprLiteral]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
-struct ExprUnaryDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprUnary]
-   fn __init__(inout self, expr : ExprUnary):
-      self.ptr = AnyPointer[ExprUnary]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprUnary]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
-struct ExprVariableDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprVariable]
-   fn __init__(inout self, expr : ExprVariable):
-      self.ptr = AnyPointer[ExprVariable]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprVariable]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
-struct ExprAssignDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprAssign]
-   fn __init__(inout self, expr : ExprAssign):
-      self.ptr = AnyPointer[ExprAssign]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprAssign]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
-struct ExprLogicalDelegate(CollectionElement):
-   var ptr : AnyPointer[ExprLogical]
-   fn __init__(inout self, expr : ExprLogical):
-      self.ptr = AnyPointer[ExprLogical]().alloc(1)
-      self.ptr.emplace_value(expr)
-   fn __copyinit__(inout self, other : Self):
-      self.ptr = AnyPointer[ExprLogical]().alloc(1)
-      self.ptr.emplace_value(other.ptr[])
-   fn __moveinit__(inout self, owned other : Self):
-      self.ptr = other.ptr
-   fn __del__(owned self):
-      _ = self.ptr.take_value()
-      self.ptr.free()
-
 
 struct ExprBinary(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
-   var left : Self.ptr_t
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
+   var left : AnyPointer[Self.Expr]
    var operator : Token
-   var right : Self.ptr_t
+   var right : AnyPointer[Self.Expr]
 
-   fn __init__(inout self, left : Self.var_t, operator : Token, right : Self.var_t):
-      self.left = expr_delegate_init(left)
+   fn __init__(inout self, left : Self.Expr, operator : Token, right : Self.Expr):
+      self.left = AnyPointer[Self.Expr]().alloc(1)
+      self.left.emplace_value(left)
       self.operator = operator
-      self.right = expr_delegate_init(right)
+      self.right = AnyPointer[Self.Expr]().alloc(1)
+      self.right.emplace_value(right)
 
    fn __copyinit__(inout self, other : Self):
-       self.left = other.left
-       self.operator = other.operator
-       self.right = other.right
+      self.left = AnyPointer[Self.Expr]()
+      if other.left:
+         self.left = AnyPointer[Self.Expr]().alloc(1)
+         self.left.emplace_value(other.left[])
+      self.operator = other.operator
+      self.right = AnyPointer[Self.Expr]()
+      if other.right:
+         self.right = AnyPointer[Self.Expr]().alloc(1)
+         self.right.emplace_value(other.right[])
    fn __moveinit__(inout self, owned other : Self):
       self.left = other.left
+      other.left = AnyPointer[Self.Expr]()
       self.operator = other.operator
       self.right = other.right
+      other.right = AnyPointer[Self.Expr]()
+   fn __del__(owned  self):
+      if self.left:
+         _ = self.left.take_value()
+         self.left.free()
+      if self.right:
+         _ = self.right.take_value()
+         self.right.free()
    fn __str__(self) -> String:
       return str(self.operator)
 
@@ -139,17 +60,25 @@ struct ExprBinary(Expr):
       return visitor.visitBinaryExpr[U](self)
 
 struct ExprGrouping(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
-   var expression : Self.ptr_t
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
+   var expression : AnyPointer[Self.Expr]
 
-   fn __init__(inout self, expression : Self.var_t):
-      self.expression = expr_delegate_init(expression)
+   fn __init__(inout self, expression : Self.Expr):
+      self.expression = AnyPointer[Self.Expr]().alloc(1)
+      self.expression.emplace_value(expression)
 
    fn __copyinit__(inout self, other : Self):
-       self.expression = other.expression
+      self.expression = AnyPointer[Self.Expr]()
+      if other.expression:
+         self.expression = AnyPointer[Self.Expr]().alloc(1)
+         self.expression.emplace_value(other.expression[])
    fn __moveinit__(inout self, owned other : Self):
       self.expression = other.expression
+      other.expression = AnyPointer[Self.Expr]()
+   fn __del__(owned  self):
+      if self.expression:
+         _ = self.expression.take_value()
+         self.expression.free()
    fn __str__(self) -> String:
       return String("Grouping")
 
@@ -157,17 +86,18 @@ struct ExprGrouping(Expr):
       return visitor.visitGroupingExpr[U](self)
 
 struct ExprLiteral(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
-   var value : LoxType
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
+   var value : LoxBaseType
 
-   fn __init__(inout self, value : LoxType):
+   fn __init__(inout self, value : LoxBaseType):
       self.value = value
 
    fn __copyinit__(inout self, other : Self):
-       self.value = other.value
+      self.value = other.value
    fn __moveinit__(inout self, owned other : Self):
       self.value = other.value
+   fn __del__(owned  self):
+         pass
    fn __str__(self) -> String:
       return stringify_lox(self.value)
 
@@ -175,21 +105,29 @@ struct ExprLiteral(Expr):
       return visitor.visitLiteralExpr[U](self)
 
 struct ExprUnary(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
    var operator : Token
-   var right : Self.ptr_t
+   var right : AnyPointer[Self.Expr]
 
-   fn __init__(inout self, operator : Token, right : Self.var_t):
+   fn __init__(inout self, operator : Token, right : Self.Expr):
       self.operator = operator
-      self.right = expr_delegate_init(right)
+      self.right = AnyPointer[Self.Expr]().alloc(1)
+      self.right.emplace_value(right)
 
    fn __copyinit__(inout self, other : Self):
-       self.operator = other.operator
-       self.right = other.right
+      self.operator = other.operator
+      self.right = AnyPointer[Self.Expr]()
+      if other.right:
+         self.right = AnyPointer[Self.Expr]().alloc(1)
+         self.right.emplace_value(other.right[])
    fn __moveinit__(inout self, owned other : Self):
       self.operator = other.operator
       self.right = other.right
+      other.right = AnyPointer[Self.Expr]()
+   fn __del__(owned  self):
+      if self.right:
+         _ = self.right.take_value()
+         self.right.free()
    fn __str__(self) -> String:
       return str(self.operator)
 
@@ -197,17 +135,18 @@ struct ExprUnary(Expr):
       return visitor.visitUnaryExpr[U](self)
 
 struct ExprVariable(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
    var name : Token
 
    fn __init__(inout self, name : Token):
       self.name = name
 
    fn __copyinit__(inout self, other : Self):
-       self.name = other.name
+      self.name = other.name
    fn __moveinit__(inout self, owned other : Self):
       self.name = other.name
+   fn __del__(owned  self):
+         pass
    fn __str__(self) -> String:
       return str(self.name)
 
@@ -215,21 +154,29 @@ struct ExprVariable(Expr):
       return visitor.visitVariableExpr[U](self)
 
 struct ExprAssign(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
    var name : Token
-   var value : Self.ptr_t
+   var value : AnyPointer[Self.Expr]
 
-   fn __init__(inout self, name : Token, value : Self.var_t):
+   fn __init__(inout self, name : Token, value : Self.Expr):
       self.name = name
-      self.value = expr_delegate_init(value)
+      self.value = AnyPointer[Self.Expr]().alloc(1)
+      self.value.emplace_value(value)
 
    fn __copyinit__(inout self, other : Self):
-       self.name = other.name
-       self.value = other.value
+      self.name = other.name
+      self.value = AnyPointer[Self.Expr]()
+      if other.value:
+         self.value = AnyPointer[Self.Expr]().alloc(1)
+         self.value.emplace_value(other.value[])
    fn __moveinit__(inout self, owned other : Self):
       self.name = other.name
       self.value = other.value
+      other.value = AnyPointer[Self.Expr]()
+   fn __del__(owned  self):
+      if self.value:
+         _ = self.value.take_value()
+         self.value.free()
    fn __str__(self) -> String:
       return str(self.name)
 
@@ -237,43 +184,77 @@ struct ExprAssign(Expr):
       return visitor.visitAssignExpr[U](self)
 
 struct ExprLogical(Expr):
-   alias ptr_t = Variant[ExprBinaryDelegate, ExprGroupingDelegate, ExprLiteralDelegate, ExprUnaryDelegate, ExprVariableDelegate, ExprAssignDelegate, ExprLogicalDelegate]
-   alias var_t = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical]
-   var left : Self.ptr_t
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
+   var left : AnyPointer[Self.Expr]
    var operator : Token
-   var right : Self.ptr_t
+   var right : AnyPointer[Self.Expr]
 
-   fn __init__(inout self, left : Self.var_t, operator : Token, right : Self.var_t):
-      self.left = expr_delegate_init(left)
+   fn __init__(inout self, left : Self.Expr, operator : Token, right : Self.Expr):
+      self.left = AnyPointer[Self.Expr]().alloc(1)
+      self.left.emplace_value(left)
       self.operator = operator
-      self.right = expr_delegate_init(right)
+      self.right = AnyPointer[Self.Expr]().alloc(1)
+      self.right.emplace_value(right)
 
    fn __copyinit__(inout self, other : Self):
-       self.left = other.left
-       self.operator = other.operator
-       self.right = other.right
+      self.left = AnyPointer[Self.Expr]()
+      if other.left:
+         self.left = AnyPointer[Self.Expr]().alloc(1)
+         self.left.emplace_value(other.left[])
+      self.operator = other.operator
+      self.right = AnyPointer[Self.Expr]()
+      if other.right:
+         self.right = AnyPointer[Self.Expr]().alloc(1)
+         self.right.emplace_value(other.right[])
    fn __moveinit__(inout self, owned other : Self):
       self.left = other.left
+      other.left = AnyPointer[Self.Expr]()
       self.operator = other.operator
       self.right = other.right
+      other.right = AnyPointer[Self.Expr]()
+   fn __del__(owned  self):
+      if self.left:
+         _ = self.left.take_value()
+         self.left.free()
+      if self.right:
+         _ = self.right.take_value()
+         self.right.free()
    fn __str__(self) -> String:
       return str(self.operator)
 
    fn accept[V : Visitor, U : Copyable](inout self, inout visitor : V) raises -> U:
       return visitor.visitLogicalExpr[U](self)
-fn expr_delegate_init(val : ExprBinary.var_t) -> ExprBinary.ptr_t:
-   if val.isa[ExprBinary]():
-      return ExprBinaryDelegate(val.get[ExprBinary]()[])
-   elif val.isa[ExprGrouping]():
-      return ExprGroupingDelegate(val.get[ExprGrouping]()[])
-   elif val.isa[ExprLiteral]():
-      return ExprLiteralDelegate(val.get[ExprLiteral]()[])
-   elif val.isa[ExprUnary]():
-      return ExprUnaryDelegate(val.get[ExprUnary]()[])
-   elif val.isa[ExprVariable]():
-      return ExprVariableDelegate(val.get[ExprVariable]()[])
-   elif val.isa[ExprAssign]():
-      return ExprAssignDelegate(val.get[ExprAssign]()[])
-   else: 
-      return ExprLogicalDelegate(val.get[ExprLogical]()[])
 
+struct ExprCall(Expr):
+   alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
+   var callee : AnyPointer[Self.Expr]
+   var paren : Token
+   var arguments : List[Self.Expr]
+
+   fn __init__(inout self, callee : Self.Expr, paren : Token, arguments : List[Self.Expr]):
+      self.callee = AnyPointer[Self.Expr]().alloc(1)
+      self.callee.emplace_value(callee)
+      self.paren = paren
+      self.arguments = arguments
+
+   fn __copyinit__(inout self, other : Self):
+      self.callee = AnyPointer[Self.Expr]()
+      if other.callee:
+         self.callee = AnyPointer[Self.Expr]().alloc(1)
+         self.callee.emplace_value(other.callee[])
+      self.paren = other.paren
+      self.arguments = other.arguments
+   fn __moveinit__(inout self, owned other : Self):
+      self.callee = other.callee
+      other.callee = AnyPointer[Self.Expr]()
+      self.paren = other.paren
+      self.arguments = other.arguments
+   fn __del__(owned  self):
+      if self.callee:
+         _ = self.callee.take_value()
+         self.callee.free()
+   fn __str__(self) -> String:
+      return str(self.paren)
+
+   fn accept[V : Visitor, U : Copyable](inout self, inout visitor : V) raises -> U:
+      return visitor.visitCallExpr[U](self)

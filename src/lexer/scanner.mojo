@@ -3,8 +3,9 @@ from collections.dict import Dict
 from collections.optional import Optional
 
 from src.lexer.error_report import error
-from src.lexer.token import Token, TokenType, LoxType
-from src.utils import StringKey, str2float
+from src.lexer.token import Token, TokenType
+from src.lox_types import LoxBaseType
+from src.utils import str2float
 
 
 @value
@@ -108,7 +109,7 @@ struct Scanner:
         
 
 
-   fn _add_token(inout self, type : TokenType, literal : String = "", lexeme : Optional[LoxType] = None) -> None:
+   fn _add_token(inout self, type : TokenType, literal : String = "", lexeme : Optional[LoxBaseType] = None) -> None:
         var lex = literal
         if not literal:
             lex = self.source_code[self._start : self._current]
@@ -160,10 +161,10 @@ struct Scanner:
             error(self._line, "Trailing . after decimal")
         while self._is_digit(self._peek()):
             self._current += 1
-        self._add_token(TokenType.NUMBER, lexeme = LoxType(str2float(self.source_code[self._start : self._current])))
+        self._add_token(TokenType.NUMBER, lexeme = LoxBaseType(str2float(self.source_code[self._start : self._current])))
 
    fn _identifier(inout self):
-        var lexeme : Optional[LoxType] = None
+        var lexeme : Optional[LoxBaseType] = None
         while self._is_alpha(self._peek()):
             self._current += 1
         var s : String = self.source_code[self._start : self._current]
@@ -171,11 +172,11 @@ struct Scanner:
         
 
         if result_type == TokenType.TRUE:
-            lexeme = LoxType(True)
+            lexeme = LoxBaseType(True)
         elif result_type == TokenType.FALSE:
-            lexeme = LoxType(False)
+            lexeme = LoxBaseType(False)
         elif result_type == TokenType.NIL:
-            lexeme = LoxType(None)
+            lexeme = LoxBaseType(None)
 
         self._add_token(result_type, s, lexeme) 
 

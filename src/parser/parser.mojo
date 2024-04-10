@@ -2,12 +2,13 @@ from collections import List, Dict
 from utils.variant import Variant
 
 from src.parser.expr import *
-from src.parser.stmt import StmtPrint, StmtExpression, StmtVar, StmtBlock, StmtIf, StmtWhile
+from src.parser.stmt import StmtPrint, StmtExpression, StmtVar, StmtBlock, StmtIf, StmtWhile, StmtFunction, StmtReturn
 from src.lexer.token import Token, TokenType
-from src.lexer.error_report import report
+from src.lexer.error_report import report 
 
-alias Expr = ExprBinary.var_t
+alias Expr = ExprBinary.Expr
 alias Stmt = StmtExpression.Stmt
+alias MAX_ARG_COUNT = 255
 
 @value
 struct Parser:
@@ -34,7 +35,10 @@ struct Parser:
             if self._match(TokenType.VAR):
                 self._advance()
                 return Optional[Stmt](self.var_decl())
-            return self.statement()
+            if self._match(TokenType.FUN):
+                self._advance()
+                return Optional[Stmt](self.function("function"))
+            return Optional[Stmt](self.statement())
         except Error:
             self._synchronize()
 
@@ -48,10 +52,30 @@ struct Parser:
         if self._match(TokenType.EQUAL):
             self._advance()
             initializer = self.expression()
-
         self._consume(TokenType.SEMICOLON, "Expected ';' after variable declaration.")
 
         return StmtVar(variable_identifier, initializer)
+
+    fn function(inout self, kind : String) raises -> Stmt:
+        var name = self._consume(TokenType.IDENTIFIER, "Expect " + kind + " name.")
+        self._consume(TokenType.LEFT_PAREN, "Expect '(' after " + kind + " name.")
+        var params = List[Token]()
+
+        if not self._match(TokenType.RIGHT_PAREN):
+            params.append(self._consume(TokenType.IDENTIFIER, "Expect parameter name."))
+            while self._match(TokenType.COMMA):
+                self._advance()
+                if len(params) > MAX_ARG_COUNT:
+                    report(self._peek().line, "", "Parameter count cannot exceed " + str(MAX_ARG_COUNT) + ".")
+                params.append(self._consume(TokenType.IDENTIFIER, "Expect parameter name."))
+
+        self._consume(TokenType.RIGHT_PAREN, "Expect closing ')' after parameters.")
+
+        self._consume(TokenType.LEFT_BRACE, "Expect '{' before " + kind + " body.")
+
+        var body = self.block_statement()
+        
+        return StmtFunction(name, params, body)
 
 
     fn statement(inout self) raises -> Stmt:
@@ -70,8 +94,21 @@ struct Parser:
         if self._match(TokenType.FOR):
             self._advance()
             return self.for_statement()
+        if self._match(TokenType.RETURN):
+            self._advance()
+            return self.return_statement()
+
 
         return self.expression_statement()
+
+    fn return_statement(inout self) raises -> StmtReturn:
+        var keyword = self.tokens[self.current - 1]
+        var value : Optional[Expr] = None
+        if not self._match(TokenType.SEMICOLON):
+            value = self.expression()
+        self._consume(TokenType.SEMICOLON, "Expect ';' after value.")
+        
+        return StmtReturn(keyword, value)
 
     fn while_statement(inout self) raises -> StmtWhile:
         self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'while'.")
@@ -80,6 +117,7 @@ struct Parser:
         var body = self.statement()
 
         return StmtWhile(condition, body)
+
 
     fn for_statement(inout self) raises -> Stmt:
         self._consume(TokenType.LEFT_PAREN, "Expect '(' after 'for'.")
@@ -262,7 +300,18 @@ struct Parser:
     fn unary(inout self) raises -> Expr: 
         if self._match(TokenType.BANG, TokenType.MINUS):
             return ExprUnary(self._advance(), self.unary())
-        return self.primary()
+        return self.call()
+
+    fn call(inout self) raises -> Expr:
+        var expr = self.primary()
+
+        while True:
+            if self._match(TokenType.LEFT_PAREN):
+                self._advance()
+                expr = self._finish_call(expr)
+            else:
+                break
+        return expr
 
     fn primary(inout self) raises -> Expr: 
 
@@ -281,10 +330,24 @@ struct Parser:
             self._advance()
             var expr = self.expression()
             self._consume(TokenType.RIGHT_PAREN, "Expected ')' after expression.")
+
             return ExprGrouping(expr)
+
 
         return ExprLiteral(String(""))
 
+    fn _finish_call(inout self, expr : Expr) raises -> Expr:
+        var arguments = List[Expr]()
+        if not self._match(TokenType.RIGHT_PAREN):
+            arguments.append(self.assignment())
+            while self._match(TokenType.COMMA):
+                if len(arguments) >= MAX_ARG_COUNT:
+                    report(self._peek().line, "", "Can't have more than " + str(MAX_ARG_COUNT) + "arguments.")
+                self._advance()
+                arguments.append(self.assignment())
+        var paren = self._consume(TokenType.RIGHT_PAREN, "Expect ')' after arguments.")
+
+        return ExprCall(expr, paren, arguments)
 
     fn _consume(inout self, tok_type : TokenType, msg : String) raises -> Token:
         if self._match(tok_type):

@@ -5,20 +5,29 @@ from memory.unsafe import Pointer, Reference
 
 from src.parser.expr import *
 import src.parser.stmt as stmt
-from src.utils import stmt_delegate_conversion
-from src.lexer.token import Token, TokenType, LoxType, stringify_lox
+from src.lexer.token import Token, TokenType
+from src.utils import stringify_lox, SharedPtr
+from src.lox_types import LoxType, LoxCallable, Clock, LoxFunction, LoxBaseType
 from src.parser.parser import Stmt
-from src.lexer.error_report import report
+from src.lexer.error_report import report, error
 
+
+
+alias Expr = ExprBinary.Expr
 
 @value
 struct Interpreter(Visitor, stmt.Visitor):
-   var env : Environment
+   var globals : SharedPtr[Environment]
+   var env : SharedPtr[Environment]
+   var ret_val : LoxType
 
    fn __init__(inout self):
-        self.env = Environment()
+        self.globals = SharedPtr[Environment](Environment())
+        self.globals.data[].define("clock", LoxCallable(Clock()))
+        self.env = self.globals
+        self.ret_val = LoxType(LoxBaseType(None))
 
-   fn interpert(inout self, inout expression : ExprBinary.var_t) raises:
+   fn interpert(inout self, inout expression : Expr) raises:
         print("interpret")
         if expression.isa[ExprBinary]():
             print(stringify_lox(expression.get[ExprBinary]()[].accept[Interpreter, LoxType](self)))
@@ -49,149 +58,179 @@ struct Interpreter(Visitor, stmt.Visitor):
             statement.get[stmt.StmtIf]()[].accept[Self](self)
         elif statement.isa[stmt.StmtWhile]():
             statement.get[stmt.StmtWhile]()[].accept[Self](self)
+        elif statement.isa[stmt.StmtFunction]():
+            statement.get[stmt.StmtFunction]()[].accept[Self](self)
+        elif statement.isa[stmt.StmtReturn]():
+            statement.get[stmt.StmtReturn]()[].accept[Self](self)
 
-
-   fn execute_block(inout self, owned statements : List[Stmt], owned env : Environment) -> None:
+   fn execute_block(inout self, owned statements : List[Stmt], env : SharedPtr[Environment]) raises -> None:
         var env_previous = self.env
         try:
             self.env = env
             for i in range(len(statements)):
                 self.execute(statements[i])
-                # copy self.env.enclosing and delete, then reassign
-                env_previous = self.env.enclosing[]
-                _ = self.env
         finally:
             self.env = env_previous
 
    fn visitVarStmt(inout self, Varstmt : stmt.StmtVar) raises -> None:
         var name : String = Varstmt.name.lexeme.get[String]()[]
-        var value : LoxType = None
+        var value : LoxType = LoxBaseType(None)
 
         if Varstmt.initializer:
-            value = self._evaluate(Varstmt.initializer.value())
-        self.env.define(name, value)
+            value = self._evaluate(Varstmt.initializer[])
+        self.env.data[].define(name, value)
 
    fn visitExpressionStmt(inout self, Expressionstmt : stmt.StmtExpression) raises -> None: 
-        self._evaluate(Expressionstmt.expression)
+        self._evaluate(Expressionstmt.expression[])
 
    fn visitPrintStmt(inout self, Printstmt : stmt.StmtPrint) raises -> None: 
-        print(stringify_lox(self._evaluate(Printstmt.expression)))
+        print(stringify_lox(self._evaluate(Printstmt.expression[])))
 
    fn visitBlockStmt(inout self, Blockstmt : stmt.StmtBlock) raises -> None: 
-        self.execute_block(Blockstmt.statements, Environment(self.env))
+        self.execute_block(Blockstmt.statements, SharedPtr[Environment](Environment(self.env)))
 
    fn visitIfStmt(inout self, Ifstmt : stmt.StmtIf) raises -> None: 
-        if self._is_truthy(self._evaluate(Ifstmt.condition)):
-            var variant = stmt_delegate_conversion(Ifstmt.then_stmt)
-            self.execute(variant)
+        if self._is_truthy(self._evaluate(Ifstmt.condition[])):
+            self.execute(Ifstmt.then_stmt[])
         elif Ifstmt.else_stmt:
-            var variant = stmt_delegate_conversion(Ifstmt.else_stmt.take())
-            self.execute(variant)
+            self.execute(Ifstmt.else_stmt[])
 
    fn visitWhileStmt(inout self, Whilestmt : stmt.StmtWhile) raises -> None: 
-        while self._is_truthy(self._evaluate(Whilestmt.condition)):
-            var body = stmt_delegate_conversion(Whilestmt.body)            
-            self.execute(body)
-   
+        while self._is_truthy(self._evaluate(Whilestmt.condition[])):
+            self.execute(Whilestmt.body[])
+
+   fn visitFunctionStmt(inout self, Functionstmt : stmt.StmtFunction) raises -> None: 
+        var function = LoxFunction(Functionstmt, self.env)
+        self.env.data[].define(function.declaration.name.lexeme.get[String]()[], LoxCallable(function))
+
+   fn visitReturnStmt(inout self, Returnstmt : stmt.StmtReturn) raises -> None: 
+        var value = LoxType(LoxBaseType(None))
+        if Returnstmt.value:
+            var evaluate_val = Returnstmt.value.take()
+            value = self._evaluate(evaluate_val)
+        self.ret_val = value
+        raise Error("return")
+
+
+   fn visitCallExpr[V : Copyable = LoxType](inout self, inout Callexpr : ExprCall) raises -> V: 
+        var args = List[LoxType]()
+        var callee = self._evaluate(Callexpr.callee[])
+
+        for arg in Callexpr.arguments:
+            args.append(self._evaluate(arg[]))
+
+        if not callee.isa[LoxCallable]():
+            error(Callexpr.paren.line, "Runtime Error : Can only call functions and classes.")
+
+
+        var arity = self._arity(callee.get[LoxCallable]()[])
+        if len(args) != arity:
+            error(Callexpr.paren.line, "Runtime Error : Expected " + str(arity) + " arguments, got " + str(len(args)) + ".")
+
+        return self._call(callee.get[LoxCallable]()[], args)        
+
    fn visitLogicalExpr[V : Copyable = LoxType](inout self, Logicalexpr : ExprLogical) raises -> V: 
-        var left_val = self._evaluate(Logicalexpr.left)
+        var left_val = self._evaluate(Logicalexpr.left[])
         if Logicalexpr.operator.type == TokenType.OR:
             if self._is_truthy(left_val):
                 return left_val
         else:
             if not self._is_truthy(left_val):
                 return left_val
-        return self._evaluate(Logicalexpr.right)
+        return self._evaluate(Logicalexpr.right[])
 
    fn visitAssignExpr[V : Copyable = LoxType](inout self, Assignexpr : ExprAssign) raises -> V: 
-        var value = self._evaluate(Assignexpr.value)
-        self.env.assign(Assignexpr.name, value)
+        var value = self._evaluate(Assignexpr.value[])
+        self.env.data[].assign(Assignexpr.name, value)
         return value
 
    fn visitVariableExpr[V : Copyable = LoxType](inout self, Variableexpr : ExprVariable) raises -> V: 
-        return self.env.get(Variableexpr.name)
+        return self.env.data[].get(Variableexpr.name)
 
    fn visitBinaryExpr[V : Copyable = LoxType](inout self, Binaryexpr : ExprBinary) raises -> V: 
-        var result_left = self._evaluate(Binaryexpr.left)
-        var result_right = self._evaluate(Binaryexpr.right)
+        var result_left = self._evaluate(Binaryexpr.left[]).get[LoxBaseType]()[]
+        var result_right = self._evaluate(Binaryexpr.right[]).get[LoxBaseType]()[]
         
         if Binaryexpr.operator.type == TokenType.MINUS:
             self._check_number_operands(result_left, result_right)
-            return LoxType(result_left.get[Float64]()[] - result_right.get[Float64]()[])
+            return LoxType(LoxBaseType(result_left.get[Float64]()[] - result_right.get[Float64]()[]))
         if Binaryexpr.operator.type == TokenType.PLUS:
             if result_left.isa[Float64]() and result_right.isa[Float64]():
-                return LoxType(result_left.get[Float64]()[] + result_right.get[Float64]()[])
+                return LoxType(LoxBaseType(result_left.get[Float64]()[] + result_right.get[Float64]()[]))
             if result_left.isa[String]() and result_right.isa[String]():
-                return LoxType(result_left.get[String]()[] + result_right.get[String]()[])
+                return LoxType(LoxBaseType(result_left.get[String]()[] + result_right.get[String]()[]))
         if Binaryexpr.operator.type == TokenType.STAR:
-            return LoxType(result_left.get[Float64]()[] * result_right.get[Float64]()[])
+            return LoxType(LoxBaseType(result_left.get[Float64]()[] * result_right.get[Float64]()[]))
         if Binaryexpr.operator.type == TokenType.SLASH:
-            return LoxType(result_left.get[Float64]()[] / result_right.get[Float64]()[])
+            return LoxType(LoxBaseType(result_left.get[Float64]()[] / result_right.get[Float64]()[]))
         if Binaryexpr.operator.type == TokenType.GREATER:
             var result : Bool = result_left.get[Float64]()[] > result_right.get[Float64]()[]
-            return LoxType(result)
+            return LoxType(LoxBaseType(result))
         if Binaryexpr.operator.type == TokenType.GREATER_EQUAL:
             var result : Bool = result_left.get[Float64]()[] >= result_right.get[Float64]()[]
-            return LoxType(result)
+            return LoxType(LoxBaseType(result))
         if Binaryexpr.operator.type == TokenType.LESS:
             var result : Bool = result_left.get[Float64]()[] < result_right.get[Float64]()[]
-            return LoxType(result)
+            return LoxType(LoxBaseType(result))
         if Binaryexpr.operator.type == TokenType.LESS_EQUAL:
             var result : Bool = result_left.get[Float64]()[] <= result_right.get[Float64]()[]
-            return LoxType(result)
+            return LoxType(LoxBaseType(result))
         if Binaryexpr.operator.type == TokenType.BANG_EQUAL:
-            return LoxType(not self._is_equal(result_left, result_right))
+            return LoxType(LoxBaseType(not self._is_equal(result_left, result_right)))
         if Binaryexpr.operator.type == TokenType.EQUAL_EQUAL:
-            return LoxType(self._is_equal(result_left, result_right))
+            return LoxType(LoxBaseType(self._is_equal(result_left, result_right)))
 
         if Binaryexpr.operator.type == TokenType.Q_MARK:
             if self._is_truthy(result_left):
-                return self._evaluate(Binaryexpr.right.get[ExprBinaryDelegate]()[].ptr[].left)
-            return self._evaluate(Binaryexpr.right.get[ExprBinaryDelegate]()[].ptr[].right)
+                return self._evaluate(Binaryexpr.right[].get[ExprBinary]()[].left[])
+            return self._evaluate(Binaryexpr.right[].get[ExprBinary]()[].right[])
 
-        return LoxType(None)
+        return LoxType(LoxBaseType(None))
 
    fn visitGroupingExpr[V : Copyable = LoxType](inout self, Groupingexpr : ExprGrouping) raises -> V: 
-        return self._evaluate(Groupingexpr.expression)
+        return self._evaluate(Groupingexpr.expression[])
 
    fn visitLiteralExpr[V : Copyable = LoxType](inout self, Literalexpr : ExprLiteral) raises -> V: 
-        return Literalexpr.value
+        return LoxType(Literalexpr.value)
 
    fn visitUnaryExpr[V : Copyable = LoxType](inout self, Unaryexpr : ExprUnary) raises -> V: 
-        var result_right = self._evaluate(Unaryexpr.right)
+        var result_right = self._evaluate(Unaryexpr.right[]).get[LoxBaseType]()[]
 
         if Unaryexpr.operator.type == TokenType.MINUS:
-            return LoxType(-result_right.get[Float64]()[])
+            return LoxType(LoxBaseType(-result_right.get[Float64]()[]))
         if Unaryexpr.operator.type == TokenType.BANG:
-            return LoxType(not self._is_truthy(result_right))
+            return LoxType(LoxBaseType(not self._is_truthy(result_right)))
 
-        return LoxType(None)
+        return LoxType(LoxBaseType(None))
 
-   fn _evaluate(inout self, borrowed expr : ExprBinary.ptr_t) raises -> LoxType:
-        if expr.isa[ExprBinaryDelegate]():
-            return expr.get[ExprBinaryDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
-        elif expr.isa[ExprGroupingDelegate]():
-            return expr.get[ExprGroupingDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
-        elif expr.isa[ExprUnaryDelegate]():
-            return expr.get[ExprUnaryDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
-        elif expr.isa[ExprVariableDelegate]():
-            return expr.get[ExprVariableDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
-        elif expr.isa[ExprAssignDelegate]():
-            return expr.get[ExprAssignDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
-        elif expr.isa[ExprLogicalDelegate]():
-            return expr.get[ExprLogicalDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
+   fn _evaluate(inout self, inout expr : Expr) raises -> LoxType:
+        if expr.isa[ExprBinary]():
+            return expr.get[ExprBinary]()[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprGrouping]():
+            return expr.get[ExprGrouping]()[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprUnary]():
+            return expr.get[ExprUnary]()[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprVariable]():
+            return expr.get[ExprVariable]()[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprAssign]():
+            return expr.get[ExprAssign]()[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprLogical]():
+            return expr.get[ExprLogical]()[].accept[Interpreter, LoxType](self)
+        elif expr.isa[ExprCall]():
+            return expr.get[ExprCall]()[].accept[Interpreter, LoxType](self)
         else:
-            return expr.get[ExprLiteralDelegate]()[].ptr[].accept[Interpreter, LoxType](self)
+            return expr.get[ExprLiteral]()[].accept[Interpreter, LoxType](self)
 
    fn _is_truthy(self, obj : LoxType) -> Bool:
-        if obj.isa[NoneType]():
+        var object = obj.get[LoxBaseType]()[]
+        if object.isa[NoneType]():
             return False
-        if obj.isa[Bool]():
-            return obj.get[Bool]()[]
+        if object.isa[Bool]():
+            return object.get[Bool]()[]
         
         return True
 
-   fn _is_equal(self, obj1 : LoxType, obj2 : LoxType) -> Bool:
+   fn _is_equal(self, obj1 : LoxBaseType, obj2 : LoxBaseType) -> Bool:
         if obj1.isa[NoneType]() and obj2.isa[NoneType]():
             return True
         if obj1.isa[NoneType]():
@@ -208,69 +247,50 @@ struct Interpreter(Visitor, stmt.Visitor):
 
         return False
 
-   fn _check_number_operand(self, obj1 : LoxType) raises:
+   fn _check_number_operand(self, obj1 : LoxBaseType) raises:
         if not obj1.isa[Float64]():
             raise Error("Operand must be a number.")
 
-   fn _check_number_operands(self, obj1 : LoxType, obj2 : LoxType) raises:
+   fn _check_number_operands(self, obj1 : LoxBaseType, obj2 : LoxBaseType) raises:
         if not obj1.isa[Float64]() or not obj2.isa[Float64]():
             raise Error("Both operands must be numbers")
 
-   fn _stringify(self, obj : LoxType) -> String:
-        if obj.isa[NoneType]():
-            return str(obj.get[NoneType]()[])
-        if obj.isa[Bool]():
-            return str(obj.get[Bool]()[])
-        if obj.isa[Float64]():
-            var ret_str = str(obj.get[Float64]()[])
-            try:
-                var split = ret_str.split(".")
-                if len(split[1]) == 1 and split[1] == "0":
-                    ret_str = split[0]
-            except Error:
-                pass
-            return ret_str
+   fn _call(inout self, inout callee : LoxCallable, inout args : List[LoxType]) -> LoxType:
+        if callee.isa[Clock]():
+            return callee.get[Clock]()[].call(self, args)
+        elif callee.isa[LoxFunction]():
+            return callee.get[LoxFunction]()[].call(self, args)
+        return LoxBaseType(None)
 
-        return obj.get[String]()[]
-    
+   fn _arity(inout self, inout callee : LoxCallable) -> Int:
+        if callee.isa[Clock]():
+            return callee.get[Clock]()[].arity()
+        if callee.isa[LoxFunction]():
+            return callee.get[LoxFunction]()[].arity()
+        return 0
 
-struct Environment(Movable, Copyable):
+
+struct Environment(CollectionElement):
    var variable_map : Dict[String, LoxType] 
-   var enclosing : AnyPointer[Environment]
+   var enclosing : SharedPtr[Environment]
+
+   fn __init__(inout self, env_ptr : SharedPtr[Environment]):
+        self.variable_map = Dict[String, LoxType]()
+        self.enclosing = env_ptr
 
    fn __init__(inout self):
         self.variable_map = Dict[String, LoxType]()
-        self.enclosing = AnyPointer[Environment]()
-
-   fn __init__(inout self, env : Environment):
-        self.variable_map = Dict[String, LoxType]()
-        self.enclosing = AnyPointer[Environment]().alloc(1)
-        self.enclosing.emplace_value(env)
-
-
-   fn __moveinit__(inout self, owned other : Self):
-        self.variable_map = other.variable_map^
-        self.enclosing = AnyPointer[Environment]()
-
-        if other.enclosing:
-            self.enclosing = AnyPointer[Environment]().alloc(1)
-            other.enclosing.move_into(self.enclosing)
-
-        other.enclosing = AnyPointer[Environment]()
+        self.enclosing = SharedPtr[Environment]()
 
    fn __copyinit__(inout self, other : Self):
         self.variable_map = other.variable_map
-        self.enclosing = AnyPointer[Environment]()
+        self.enclosing = other.enclosing
 
-        if other.enclosing:
-            self.enclosing = self.enclosing.alloc(1)
-            self.enclosing.emplace_value(other.enclosing[])
+   fn __moveinit__(inout self, owned other : Self):
+        self.variable_map = other.variable_map^
+        self.enclosing = other.enclosing^
 
-   fn __del__(owned self):
-        if self.enclosing:
-            _ = self.enclosing.take_value()
-            self.enclosing.free()
-
+    
    fn define(inout self, name : String, value : LoxType):
         self.variable_map[name] = value
 
@@ -280,8 +300,8 @@ struct Environment(Movable, Copyable):
         if ret_val:
             return ret_val.take()
 
-        if self.enclosing:
-            return self.enclosing[].get(name)
+        if self.enclosing.data:
+            return self.enclosing.data[].get(name)
 
         print("Runtime Error: Undefined reference to variable " + name.lexeme.get[String]()[])
         raise Error("Undefined variable reference.")
@@ -291,11 +311,14 @@ struct Environment(Movable, Copyable):
 
         if self.variable_map.find(var_name):
             self.variable_map[var_name] = value
-        elif self.enclosing: 
-            self.enclosing[].assign(name, value)
+        elif self.enclosing.data:
+            self.enclosing.data[].assign(name, value)
         else:
             print("Runtime Error: Assignment to undeclared variable " + name.lexeme.get[String]()[])
             raise Error("Undeclared variable assignment.")
+
+            
+
 
             
 
