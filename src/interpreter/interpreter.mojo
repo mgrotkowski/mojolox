@@ -27,23 +27,10 @@ struct Interpreter(Visitor, stmt.Visitor):
         self.env = self.globals
         self.ret_val = LoxType(LoxBaseType(None))
 
-   fn interpert(inout self, inout expression : Expr) raises:
-        print("interpret")
-        if expression.isa[ExprBinary]():
-            print(stringify_lox(expression.get[ExprBinary]()[].accept[Interpreter, LoxType](self)))
-        elif expression.isa[ExprGrouping]():
-            print(stringify_lox(expression.get[ExprGrouping]()[].accept[Interpreter, LoxType](self)))
-        elif expression.isa[ExprUnary]():
-            print(stringify_lox(expression.get[ExprUnary]()[].accept[Interpreter, LoxType](self)))
-        elif expression.isa[ExprAssign]():
-            print(stringify_lox(expression.get[ExprAssign]()[].accept[Interpreter, LoxType](self)))
-        else:
-            print(stringify_lox(expression.get[ExprLiteral]()[].accept[Interpreter, LoxType](self)))
             
    fn interpret(inout self, inout statements : List[Stmt]) raises:
         for i in range(len(statements)):
             self.execute(statements[i])
-            
 
    fn execute(inout self, inout statement : Stmt) raises:
         if statement.isa[stmt.StmtPrint]():
@@ -72,7 +59,8 @@ struct Interpreter(Visitor, stmt.Visitor):
         finally:
             self.env = env_previous
 
-   fn visitVarStmt(inout self, Varstmt : stmt.StmtVar) raises -> None:
+
+   fn visitVarStmt(inout self, inout Varstmt : stmt.StmtVar) raises -> None:
         var name : String = Varstmt.name.lexeme.get[String]()[]
         var value : LoxType = LoxBaseType(None)
 
@@ -80,30 +68,30 @@ struct Interpreter(Visitor, stmt.Visitor):
             value = self._evaluate(Varstmt.initializer[])
         self.env.data[].define(name, value)
 
-   fn visitExpressionStmt(inout self, Expressionstmt : stmt.StmtExpression) raises -> None: 
+   fn visitExpressionStmt(inout self, inout Expressionstmt : stmt.StmtExpression) raises -> None: 
         self._evaluate(Expressionstmt.expression[])
 
-   fn visitPrintStmt(inout self, Printstmt : stmt.StmtPrint) raises -> None: 
+   fn visitPrintStmt(inout self, inout Printstmt : stmt.StmtPrint) raises -> None: 
         print(stringify_lox(self._evaluate(Printstmt.expression[])))
 
-   fn visitBlockStmt(inout self, Blockstmt : stmt.StmtBlock) raises -> None: 
+   fn visitBlockStmt(inout self, inout Blockstmt : stmt.StmtBlock) raises -> None: 
         self.execute_block(Blockstmt.statements, SharedPtr[Environment](Environment(self.env)))
 
-   fn visitIfStmt(inout self, Ifstmt : stmt.StmtIf) raises -> None: 
+   fn visitIfStmt(inout self, inout Ifstmt : stmt.StmtIf) raises -> None: 
         if self._is_truthy(self._evaluate(Ifstmt.condition[])):
             self.execute(Ifstmt.then_stmt[])
         elif Ifstmt.else_stmt:
             self.execute(Ifstmt.else_stmt[])
 
-   fn visitWhileStmt(inout self, Whilestmt : stmt.StmtWhile) raises -> None: 
+   fn visitWhileStmt(inout self, inout Whilestmt : stmt.StmtWhile) raises -> None: 
         while self._is_truthy(self._evaluate(Whilestmt.condition[])):
             self.execute(Whilestmt.body[])
 
-   fn visitFunctionStmt(inout self, Functionstmt : stmt.StmtFunction) raises -> None: 
+   fn visitFunctionStmt(inout self, inout Functionstmt : stmt.StmtFunction) raises -> None: 
         var function = LoxFunction(Functionstmt, self.env)
         self.env.data[].define(function.declaration.name.lexeme.get[String]()[], LoxCallable(function))
 
-   fn visitReturnStmt(inout self, Returnstmt : stmt.StmtReturn) raises -> None: 
+   fn visitReturnStmt(inout self, inout Returnstmt : stmt.StmtReturn) raises -> None: 
         var value = LoxType(LoxBaseType(None))
         if Returnstmt.value:
             var evaluate_val = Returnstmt.value.take()
@@ -139,13 +127,17 @@ struct Interpreter(Visitor, stmt.Visitor):
                 return left_val
         return self._evaluate(Logicalexpr.right[])
 
-   fn visitAssignExpr[V : Copyable = LoxType](inout self, Assignexpr : ExprAssign) raises -> V: 
+   fn visitAssignExpr[V : Copyable = LoxType](inout self, inout Assignexpr : ExprAssign) raises -> V: 
         var value = self._evaluate(Assignexpr.value[])
-        self.env.data[].assign(Assignexpr.name, value)
+        #self.env.data[].assign(Assignexpr.name, value)
+        if Assignexpr.distance:
+            self.env.data[].assign_at(Assignexpr.distance.value(), Assignexpr.name, value)
+        else:
+            self.globals.data[].assign(Assignexpr.name, value)
         return value
 
-   fn visitVariableExpr[V : Copyable = LoxType](inout self, Variableexpr : ExprVariable) raises -> V: 
-        return self.env.data[].get(Variableexpr.name)
+   fn visitVariableExpr[V : Copyable = LoxType](inout self, inout Variableexpr : ExprVariable) raises -> V: 
+        return self._lookup_variable(Variableexpr.name, Variableexpr)
 
    fn visitBinaryExpr[V : Copyable = LoxType](inout self, Binaryexpr : ExprBinary) raises -> V: 
         var result_left = self._evaluate(Binaryexpr.left[]).get[LoxBaseType]()[]
@@ -202,6 +194,12 @@ struct Interpreter(Visitor, stmt.Visitor):
             return LoxType(LoxBaseType(not self._is_truthy(result_right)))
 
         return LoxType(LoxBaseType(None))
+   
+   fn _lookup_variable(inout self, name : Token, expr : ExprVariable) raises -> LoxType:
+        if expr.distance:
+            return self.env.data[].get_at(expr.distance.value(), name)
+        else:
+            return self.globals.data[].get(name)
 
    fn _evaluate(inout self, inout expr : Expr) raises -> LoxType:
         if expr.isa[ExprBinary]():
@@ -306,6 +304,17 @@ struct Environment(CollectionElement):
         print("Runtime Error: Undefined reference to variable " + name.lexeme.get[String]()[])
         raise Error("Undefined variable reference.")
 
+   fn get_at(inout self, distance : UInt64, name : Token) raises -> LoxType:
+        if not distance:
+            return self.get(name)
+
+        var env = self.enclosing
+
+        for i in range(distance):
+            env = env.data[].enclosing 
+
+        return env.data[].get(name)
+
    fn assign(inout self, name : Token, value : LoxType) raises -> None:
         var var_name = name.lexeme.get[String]()[]
 
@@ -316,6 +325,14 @@ struct Environment(CollectionElement):
         else:
             print("Runtime Error: Assignment to undeclared variable " + name.lexeme.get[String]()[])
             raise Error("Undeclared variable assignment.")
+
+   fn assign_at(inout self, distance : UInt64, name : Token, value : LoxType) raises -> None:
+        var env = self.enclosing
+
+        for i in range(distance):
+            env = env.data[].enclosing 
+
+        env.data[].assign(name, value)
 
             
 

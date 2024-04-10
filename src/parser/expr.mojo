@@ -10,8 +10,8 @@ trait Visitor:
    fn visitGroupingExpr[V : Copyable](inout self, Groupingexpr : ExprGrouping) raises -> V: ...
    fn visitLiteralExpr[V : Copyable](inout self, Literalexpr : ExprLiteral) raises -> V: ...
    fn visitUnaryExpr[V : Copyable](inout self, Unaryexpr : ExprUnary) raises -> V: ...
-   fn visitVariableExpr[V : Copyable](inout self, Variableexpr : ExprVariable) raises -> V: ...
-   fn visitAssignExpr[V : Copyable](inout self, Assignexpr : ExprAssign) raises -> V: ...
+   fn visitVariableExpr[V : Copyable](inout self, inout Variableexpr : ExprVariable) raises -> V: ...
+   fn visitAssignExpr[V : Copyable](inout self, inout Assignexpr : ExprAssign) raises -> V: ...
    fn visitLogicalExpr[V : Copyable](inout self, Logicalexpr : ExprLogical) raises -> V: ...
    fn visitCallExpr[V : Copyable](inout self, inout Callexpr : ExprCall) raises -> V: ...
 trait Expr(CollectionElement):
@@ -137,14 +137,18 @@ struct ExprUnary(Expr):
 struct ExprVariable(Expr):
    alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
    var name : Token
+   var distance : Optional[UInt64]
 
    fn __init__(inout self, name : Token):
       self.name = name
+      self.distance = None
 
    fn __copyinit__(inout self, other : Self):
       self.name = other.name
+      self.distance = other.distance
    fn __moveinit__(inout self, owned other : Self):
       self.name = other.name
+      self.distance = other.distance
    fn __del__(owned  self):
          pass
    fn __str__(self) -> String:
@@ -157,21 +161,25 @@ struct ExprAssign(Expr):
    alias Expr = Variant[ExprBinary, ExprGrouping, ExprLiteral, ExprUnary, ExprVariable, ExprAssign, ExprLogical, ExprCall]
    var name : Token
    var value : AnyPointer[Self.Expr]
+   var distance : Optional[UInt64]
 
    fn __init__(inout self, name : Token, value : Self.Expr):
       self.name = name
       self.value = AnyPointer[Self.Expr]().alloc(1)
       self.value.emplace_value(value)
+      self.distance = None
 
    fn __copyinit__(inout self, other : Self):
       self.name = other.name
       self.value = AnyPointer[Self.Expr]()
+      self.distance = other.distance
       if other.value:
          self.value = AnyPointer[Self.Expr]().alloc(1)
          self.value.emplace_value(other.value[])
    fn __moveinit__(inout self, owned other : Self):
       self.name = other.name
       self.value = other.value
+      self.distance = other.distance
       other.value = AnyPointer[Self.Expr]()
    fn __del__(owned  self):
       if self.value:

@@ -9,16 +9,18 @@ from src.lexer.error_report import error
 from src.parser.parser import Parser, Stmt
 import src.parser.stmt as stmt
 from src.interpreter.interpreter import Interpreter
+from src.resolver.resolver import Resolver
 
 @value
 struct Lox:
     var hadRuntimeError : Bool
     var interpreter : Interpreter
+    var resolver : Resolver
 
     fn __init__(inout self):
         self.hadRuntimeError = False
         self.interpreter = Interpreter()
-        print("init")
+        self.resolver = Resolver()
 
     def RunFile(self, file_name : StringRef):
         with open(Path(file_name), "r") as f:
@@ -54,9 +56,11 @@ struct Lox:
             print(Error)
             return
         try:
+            self.resolver.resolve(parse_result)
             self.interpreter.interpret(parse_result)
         except Error:
             self.hadRuntimeError = True
+
             
     
 
